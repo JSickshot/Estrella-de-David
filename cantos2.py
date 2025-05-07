@@ -102,7 +102,7 @@ class ProyectorCantos:
 
         self.texto_letra = tk.Text(
             self.frame_central,
-            font=("Arial Black", 44),
+            font=("Arial Black", 40),
             bg="white",
             fg="black",
             wrap="word",
@@ -172,7 +172,7 @@ class ProyectorCantos:
 
     def cargar_setlist(self):
         if not self.orden_seleccion:
-            messagebox.showwarning("Advertencia", "selecciona un canto.")
+            messagebox.showwarning("Advertencia", "Debes seleccionar al menos un canto.")
             return
 
         self.setlist = [c for c in self.canciones if c["nombre"] in self.orden_seleccion]
