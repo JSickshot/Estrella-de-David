@@ -131,10 +131,10 @@ class ProyectorCantos:
             if os.path.isdir(ruta_carpeta):
                 ruta_audio = os.path.join(ruta_carpeta, "audio.mp3")
                 ruta_letra = os.path.join(ruta_carpeta, "letra.txt")
-                if os.path.exists(ruta_audio) and os.path.exists(ruta_letra):
+                if os.path.exists(ruta_letra):
                     canciones.append({
                         "nombre": nombre_carpeta,
-                        "audio": ruta_audio,
+                        "audio": ruta_audio if os.path.exists(ruta_audio) else None,
                         "letra": ruta_letra
                     })
         return canciones
@@ -149,7 +149,6 @@ class ProyectorCantos:
                 self.lista_canciones.insert(tk.END, cancion["nombre"])
                 self.canciones_visibles.append(cancion["nombre"])
 
-        
         for i, nombre in enumerate(self.canciones_visibles):
             if nombre in self.orden_seleccion:
                 self.lista_canciones.selection_set(i)
@@ -160,19 +159,17 @@ class ProyectorCantos:
             for i in self.lista_canciones.curselection()
         ]
 
-        
         for nombre in self.canciones_visibles:
             if nombre in self.orden_seleccion and nombre not in seleccion_actual:
                 self.orden_seleccion.remove(nombre)
 
-        
         for nombre in seleccion_actual:
             if nombre not in self.orden_seleccion:
                 self.orden_seleccion.append(nombre)
 
     def cargar_setlist(self):
         if not self.orden_seleccion:
-            messagebox.showwarning("Advertencia", "selecciona un canto.")
+            messagebox.showwarning("Advertencia", "Selecciona un canto.")
             return
 
         self.setlist = [c for c in self.canciones if c["nombre"] in self.orden_seleccion]
@@ -199,9 +196,13 @@ class ProyectorCantos:
         self.texto_letra.tag_add("center", "1.0", "end")
         self.texto_letra.yview_moveto(0)
 
-        pygame.mixer.music.load(cancion["audio"])
-        pygame.mixer.music.play()
-        self.musica_pausada = False
+        if cancion["audio"]:
+            pygame.mixer.music.load(cancion["audio"])
+            pygame.mixer.music.play()
+            self.musica_pausada = False
+        else:
+            pygame.mixer.music.stop()
+            self.musica_pausada = False
 
     def volver_a_seleccion(self, event=None):
         pygame.mixer.music.stop()
