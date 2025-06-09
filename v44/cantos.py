@@ -235,3 +235,5 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = ProyectorCantos(root)
     root.mainloop()
+
+#pyinstaller --onefile --windowed --add-data "canciones;canciones" --add-data "estrelladedavid.ico;." --icon="estrelladedavid.ico" cantos.py 
