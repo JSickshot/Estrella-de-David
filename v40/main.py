@@ -1,27 +1,16 @@
 import os
 import sys
 import json
-import ctypes
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
 import pygame
 
-try:
-    from PIL import Image, ImageTk 
-    _HAS_PILLOW = True
-except Exception:
-    _HAS_PILLOW = False
 
 def app_base_dir() -> str:
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         return os.path.dirname(sys.executable)
     return os.path.abspath(".")
 
-
-def resource_path(rel):
-    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, rel)
-    return os.path.join(os.path.abspath("."), rel)
 
 class ProyectorCantos:
     def __init__(self, root):
@@ -30,44 +19,42 @@ class ProyectorCantos:
         self.root.configure(bg="white")
         self.root.attributes('-fullscreen', True)
 
-        try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("QCG.EstrellaDeDavid.Cantos")
-        except Exception:
-            pass
-
-        ico_path = resource_path("estrelladedavid.ico")
-        if os.path.exists(ico_path):
+        # Icono de la ventana / logo
+        self.base_dir = app_base_dir()
+        self.logo_path = os.path.join(self.base_dir, "estrelladedavid.ico")
+        if os.path.exists(self.logo_path):
             try:
-                self.root.iconbitmap(ico_path)
+                self.root.iconbitmap(self.logo_path)
             except Exception:
                 pass
 
         pygame.mixer.init()
 
-        self.base_dir = app_base_dir()
+        # Rutas base
         self.carpeta_canciones = os.path.join(self.base_dir, "canciones")
         self.carpeta_playlists = os.path.join(self.base_dir, "playlists")
         os.makedirs(self.carpeta_canciones, exist_ok=True)
         os.makedirs(self.carpeta_playlists, exist_ok=True)
 
-        self.cover_path = resource_path("portada.png")
-        if not os.path.exists(self.cover_path):
-            alt = resource_path("portada.jpg")
-            if os.path.exists(alt):
-                self.cover_path = alt
-
+        # Estado
         self.canciones = self.cargar_canciones()
         self.setlist = []
         self.cancion_actual_index = 0
         self.musica_pausada = False
-        self.orden_seleccion = []
+        self.orden_seleccion = []  # nombres en el orden seleccionado
         self.canciones_visibles = [c["nombre"] for c in self.canciones]
-        self.playlist_en_edicion_path = None
+        self.playlist_en_edicion_path = None  # para sobrescribir cuando se edita
+
+        # Pantallas
         self.frame_inicio = self._construir_inicio()
         self.frame_seleccion = self._construir_seleccion()
         self.frame_letra = self._construir_letra()
         self.frame_playlists = self._construir_gestor_playlists()
+
+        # Mostrar inicio
         self._mostrar_frame(self.frame_inicio)
+
+        # Atajos y navegación global (no dependen de un menú)
         self.root.bind("<Escape>", self.volver_a_inicio)
         self.root.bind("<Right>", lambda e: self.cancion_siguiente())
         self.root.bind("<Left>", lambda e: self.cancion_anterior())
@@ -76,105 +63,80 @@ class ProyectorCantos:
         self.root.bind("<Control-o>", lambda e: self.cargar_playlist_por_dialogo())
         self.root.bind("<Control-n>", lambda e: self.mostrar_menu_armar_playlist())
 
-    def _cargar_portada(self, parent, max_w=900, max_h=420):
-        if not os.path.exists(self.cover_path):
-            return None
-        try:
-            if _HAS_PILLOW:
-                img = Image.open(self.cover_path)
-                img.thumbnail((max_w, max_h))
-                self._cover_img_big = ImageTk.PhotoImage(img)
-            else:
-                self._cover_img_big = tk.PhotoImage(file=self.cover_path)
-        except Exception:
-            return None
-
-        lbl = tk.Label(parent, image=self._cover_img_big, bg="white")
-        lbl.pack(pady=(24, 8))
-        return lbl
-
-    def _get_portada_pequena(self, max_w=80, max_h=80):
-        if not os.path.exists(self.cover_path):
-            return None
-        try:
-            if _HAS_PILLOW:
-                img = Image.open(self.cover_path)
-                img.thumbnail((max_w, max_h))
-                self._cover_img_small = ImageTk.PhotoImage(img)
-            else:
-                self._cover_img_small = tk.PhotoImage(file=self.cover_path)
-        except Exception:
-            return None
-        return self._cover_img_small
-
+    # ---------- Construcción de pantallas ----------
     def _construir_inicio(self):
         frame = tk.Frame(self.root, bg="white")
 
-        self._cargar_portada(frame)
+        # Logo (intenta renderizar .ico; si no, solo icono de ventana)
+        self.logo_img = None
+        if os.path.exists(self.logo_path):
+            try:
+                self.logo_img = tk.PhotoImage(file=self.logo_path)
+            except Exception:
+                self.logo_img = None
+        if self.logo_img:
+            tk.Label(frame, image=self.logo_img, bg="white").pack(pady=(30, 10))
 
-        tk.Label(
+        titulo = tk.Label(
             frame, text="Estrella de David",
-            font=("Arial", 28, "bold"), bg="white", fg="#222222"
-        ).pack(pady=4)
+            font=("Arial", 56, "bold"), bg="white", fg="#222222"
+        )
+        titulo.pack(pady=10)
 
-        tk.Label(
-            frame, text="",
-            font=("Arial", 18), bg="white", fg="#444444"
-        ).pack(pady=(0, 16))
+        subt = tk.Label(
+            frame, text="Selecciona una opción",
+            font=("Arial", 24), bg="white", fg="#444444"
+        )
+        subt.pack(pady=(0, 20))
 
         cont = tk.Frame(frame, bg="white")
         cont.pack(expand=True)
 
         tk.Button(
-            cont, text="Crear playlist",
-            font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=28, pady=14,
+            cont, text="Seleccionar / Armar playlist",
+            font=("Arial", 28, "bold"),
+            bg="#1d5aa6", fg="white", bd=0, padx=30, pady=18,
             command=self.mostrar_menu_armar_playlist
         ).grid(row=0, column=0, padx=20, pady=20)
 
         tk.Button(
             cont, text="Cargar playlist",
-            font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=28, pady=14,
+            font=("Arial", 28, "bold"),
+            bg="#0f6f3b", fg="white", bd=0, padx=30, pady=18,
             command=self.mostrar_gestor_playlists
         ).grid(row=0, column=1, padx=20, pady=20)
 
         tk.Button(
             frame, text="Cerrar aplicación",
             font=("Arial", 18, "bold"),
-            bg="#aa0000", fg="white", bd=0, padx=20, pady=10,
+            bg="#aa0000", fg="white", bd=0, padx=18, pady=10,
             command=self.cerrar_aplicacion
-        ).pack(pady=24)
+        ).pack(pady=30)
 
         return frame
 
     def _construir_seleccion(self):
         frame = tk.Frame(self.root, bg="white")
 
-        tk.Label(
-            frame, text="Estrella de David - Cantos",
-            font=("Arial", 24, "bold"), bg="white", fg="#282828"
-        ).pack(pady=12)
+        self.label_instrucciones = tk.Label(
+            frame, text="Arma o edita tu playlist: busca y selecciona cantos",
+            font=("Arial", 36, "bold"), bg="white", fg="#282828"
+        )
+        self.label_instrucciones.pack(pady=20)
 
-        cont = tk.Frame(frame, bg="white")
-        cont.pack(fill="both", expand=True, padx=20, pady=10)
+        caja_busqueda = tk.Frame(frame, bg="white")
+        caja_busqueda.pack(pady=(0, 10))
+        tk.Label(caja_busqueda, text="Buscar:", font=("Arial", 20), bg="white", fg="#333").pack(side="left", padx=(0, 10))
 
-        left = tk.Frame(cont, bg="white")
-        left.pack(side="left", fill="both", expand=True)
-
-        caja_busqueda = tk.Frame(left, bg="white")
-        caja_busqueda.pack(pady=(0, 6), anchor="w")
-        tk.Label(caja_busqueda, text="Buscar:", font=("Arial", 18), bg="white", fg="#333").pack(side="left", padx=(0, 10))
-
-        self.entry_busqueda = tk.Entry(caja_busqueda, font=("Arial", 18), width=32)
+        self.entry_busqueda = tk.Entry(caja_busqueda, font=("Arial", 22), width=32)
         self.entry_busqueda.pack(side="left")
         self.entry_busqueda.bind("<KeyRelease>", self.filtrar_canciones)
 
-        lista_wrap = tk.Frame(left, bg="white")
-        lista_wrap.pack(fill="both", expand=True)
+        lista_wrap = tk.Frame(frame, bg="white")
+        lista_wrap.pack(padx=40, pady=10, fill="both", expand=True)
 
         self.lista_canciones = tk.Listbox(
-            lista_wrap, selectmode=tk.MULTIPLE, font=("Arial", 18),
+            lista_wrap, selectmode=tk.MULTIPLE, font=("Arial", 24),
             bd=0, highlightthickness=0, selectbackground="#d0d0d0", activestyle="none"
         )
         self.lista_canciones.pack(side="left", fill="both", expand=True)
@@ -189,93 +151,58 @@ class ProyectorCantos:
 
         self.lista_canciones.bind('<<ListboxSelect>>', self.actualizar_orden_seleccion)
 
-        right = tk.Frame(cont, bg="white")
-        right.pack(side="right", fill="y", padx=(16, 0))
-
-        tk.Label(
-            right, text="",
-            font=("Arial", 18, "bold"), bg="white", fg="#222"
-        ).pack(anchor="n", pady=(0, 6))
-
-        box = tk.Frame(right, bg="white", highlightbackground="#cccccc", highlightthickness=1, bd=0)
-        box.pack(fill="y", pady=(0, 6))
-
-        self.lista_orden = tk.Listbox(
-            box, font=("Arial", 18),
-            bd=0, highlightthickness=0, activestyle="none",
-            selectbackground="#eeeeee", height=18
-        )
-        self.lista_orden.pack(side="left", fill="y", padx=8, pady=8)
-
-        sb_ord = tk.Scrollbar(box)
-        sb_ord.pack(side="right", fill="y")
-        self.lista_orden.config(yscrollcommand=sb_ord.set)
-        sb_ord.config(command=self.lista_orden.yview)
-
-        self.lbl_total = tk.Label(right, text="0 seleccionados", font=("Arial", 16), bg="white", fg="#666")
-        self.lbl_total.pack(anchor="w", pady=(4, 0))
         barra_botones = tk.Frame(frame, bg="white")
         barra_botones.pack(pady=10)
 
+        # Guardar como (siempre disponible)
         tk.Button(
             barra_botones, text="Guardar playlist…",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#0f6f3b", fg="white", bd=0, padx=18, pady=8,
             command=self.guardar_playlist
         ).grid(row=0, column=0, padx=6)
 
+        # Guardar cambios (sobrescribir) solo si venimos de "Editar"
         self.btn_guardar_cambios = tk.Button(
             barra_botones, text="Guardar cambios (sobrescribir)",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#00796b", fg="white", bd=0, padx=18, pady=8,
             command=self.guardar_cambios_sobrescribir
         )
         self.btn_guardar_cambios.grid(row=0, column=1, padx=6)
-        self.btn_guardar_cambios.grid_remove()
+        self.btn_guardar_cambios.grid_remove()  # oculto por defecto
 
         tk.Button(
-            barra_botones, text="Proyectar",
-            font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=20, pady=10,
+            barra_botones, text="Iniciar Proyección",
+            font=("Arial", 22, "bold"),
+            bg="#282828", fg="white", bd=0, padx=22, pady=10,
             command=self.cargar_setlist
         ).grid(row=0, column=2, padx=12)
 
         tk.Button(
-            barra_botones, text="Inicio",
+            barra_botones, text="Volver al inicio (Esc)",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#444444", fg="white", bd=0, padx=18, pady=8,
             command=self.volver_a_inicio
         ).grid(row=0, column=3, padx=6)
 
         tk.Button(
-            barra_botones, text="Salir",
+            barra_botones, text="Cerrar aplicación",
             font=("Arial", 18, "bold"),
             bg="#aa0000", fg="white", bd=0, padx=18, pady=8,
             command=self.cerrar_aplicacion
         ).grid(row=0, column=4, padx=6)
-
-        self._actualizar_sidebar_orden()
 
         return frame
 
     def _construir_letra(self):
         frame = tk.Frame(self.root, bg="white")
 
-        header = tk.Frame(frame, bg="white")
-        header.pack(fill="x", padx=18, pady=(6, 2))
-
-        self.label_titulo = tk.Label(header, text="", font=("Arial", 18, "bold"), bg="white", fg="black")
-        self.label_titulo.pack(side="left")
-
-        self._cover_small_img = self._get_portada_pequena(max_w=80, max_h=80)
-        if self._cover_small_img:
-            self._cover_small_lbl = tk.Label(header, image=self._cover_small_img, bg="white")
-            self._cover_small_lbl.pack(side="right")
-        else:
-            self._cover_small_lbl = None
+        self.label_titulo = tk.Label(frame, text="", font=("Arial", 50, "bold"), bg="white", fg="black")
+        self.label_titulo.pack(pady=20)
 
         frame_central = tk.Frame(frame, bg="white")
-        frame_central.pack(expand=True, fill="both", padx=24, pady=6)
+        frame_central.pack(expand=True, fill="both", padx=30, pady=10)
 
         scrollbar = tk.Scrollbar(frame_central)
         scrollbar.pack(side="right", fill="y")
@@ -289,17 +216,17 @@ class ProyectorCantos:
         scrollbar.config(command=self.texto_letra.yview)
 
         frame_inferior = tk.Frame(frame, bg="white")
-        frame_inferior.pack(fill="x", pady=8)
+        frame_inferior.pack(fill="x", pady=10)
 
         tk.Button(
-            frame_inferior, text="Volver",
+            frame_inferior, text="Volver al menú principal (Esc)",
             font=("Arial", 18, "bold"),
             bg="#444444", fg="white", bd=0, padx=18, pady=8,
             command=self.volver_a_inicio
         ).pack(side="left", padx=20)
 
         tk.Button(
-            frame_inferior, text="Salir",
+            frame_inferior, text="Cerrar aplicación",
             font=("Arial", 18, "bold"),
             bg="#aa0000", fg="white", bd=0, padx=18, pady=8,
             command=self.cerrar_aplicacion
@@ -310,13 +237,14 @@ class ProyectorCantos:
     def _construir_gestor_playlists(self):
         frame = tk.Frame(self.root, bg="white")
 
-        tk.Label(frame, text="Playlists", font=("Arial", 24, "bold"), bg="white", fg="#222").pack(pady=12)
+        titulo = tk.Label(frame, text="Playlists guardadas", font=("Arial", 36, "bold"), bg="white", fg="#222")
+        titulo.pack(pady=20)
 
         lista_wrap = tk.Frame(frame, bg="white")
-        lista_wrap.pack(padx=30, pady=10, fill="both", expand=True)
+        lista_wrap.pack(padx=40, pady=10, fill="both", expand=True)
 
         self.lista_playlists = tk.Listbox(
-            lista_wrap, selectmode=tk.SINGLE, font=("Arial", 18),
+            lista_wrap, selectmode=tk.SINGLE, font=("Arial", 22),
             bd=0, highlightthickness=0, selectbackground="#d0d0d0", activestyle="none"
         )
         self.lista_playlists.pack(side="left", fill="both", expand=True)
@@ -326,34 +254,35 @@ class ProyectorCantos:
         self.lista_playlists.config(yscrollcommand=sb.set)
         sb.config(command=self.lista_playlists.yview)
 
+        # Doble clic = proyectar
         self.lista_playlists.bind("<Double-Button-1>", lambda e: self._proyectar_playlist_desde_lista())
 
         barra = tk.Frame(frame, bg="white")
-        barra.pack(pady=8)
+        barra.pack(pady=10)
 
         tk.Button(
-            barra, text="Proyectar",
+            barra, text="Proyectar seleccionada",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#1d5aa6", fg="white", bd=0, padx=18, pady=8,
             command=self._proyectar_playlist_desde_lista
         ).grid(row=0, column=0, padx=6)
 
         tk.Button(
-            barra, text="Editar",
+            barra, text="Editar seleccionada",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#6a1b9a", fg="white", bd=0, padx=18, pady=8,
             command=self._editar_playlist_desde_lista
         ).grid(row=0, column=1, padx=6)
 
         tk.Button(
-            barra, text="Actualizar",
+            barra, text="Refrescar",
             font=("Arial", 18, "bold"),
-            bg="#000000", fg="white", bd=0, padx=18, pady=8,
+            bg="#0f6f3b", fg="white", bd=0, padx=18, pady=8,
             command=self._refrescar_lista_playlists
         ).grid(row=0, column=2, padx=6)
 
         tk.Button(
-            barra, text="Inicio",
+            barra, text="Volver al inicio (Esc)",
             font=("Arial", 18, "bold"),
             bg="#444444", fg="white", bd=0, padx=18, pady=8,
             command=self.volver_a_inicio
@@ -362,6 +291,7 @@ class ProyectorCantos:
         self._refrescar_lista_playlists()
         return frame
 
+    # ---------- Navegación entre pantallas ----------
     def _mostrar_frame(self, frame_obj):
         for child in (self.frame_inicio, self.frame_seleccion, self.frame_letra, self.frame_playlists):
             child.pack_forget()
@@ -373,15 +303,13 @@ class ProyectorCantos:
         except Exception:
             pass
         self.setlist = []
-        if hasattr(self, "lista_canciones"):
-            self.lista_canciones.selection_clear(0, tk.END)
+        self.lista_canciones.selection_clear(0, tk.END)
         self.orden_seleccion.clear()
         if hasattr(self, "entry_busqueda"):
             self.entry_busqueda.delete(0, tk.END)
         self.playlist_en_edicion_path = None
         if hasattr(self, "btn_guardar_cambios"):
             self.btn_guardar_cambios.grid_remove()
-        self._actualizar_sidebar_orden()
         self._mostrar_frame(self.frame_inicio)
 
     def mostrar_menu_armar_playlist(self):
@@ -397,12 +325,13 @@ class ProyectorCantos:
         self._refrescar_lista_playlists()
         self._mostrar_frame(self.frame_playlists)
 
+    # ---------- Gestor de playlists ----------
     def _refrescar_lista_playlists(self):
         self.lista_playlists.delete(0, tk.END)
         archivos = [f for f in os.listdir(self.carpeta_playlists) if f.lower().endswith(".json")]
         archivos.sort(key=str.lower)
         if not archivos:
-            self.lista_playlists.insert(tk.END, "No hay playlists")
+            self.lista_playlists.insert(tk.END, "— No hay playlists guardadas —")
             self.lista_playlists.config(state="disabled")
         else:
             self.lista_playlists.config(state="normal")
@@ -440,7 +369,6 @@ class ProyectorCantos:
             raise ValueError("Ninguna canción de la playlist está disponible.")
 
         self.orden_seleccion = cargadas[:]
-        self._actualizar_sidebar_orden()
 
     def _proyectar_playlist_desde_lista(self):
         if str(self.lista_playlists.cget("state")) == "disabled":
@@ -458,6 +386,7 @@ class ProyectorCantos:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo cargar la playlist:\n{e}")
             return
+        # Proyectar inmediatamente a pantalla completa
         self.cargar_setlist()
 
     def _editar_playlist_desde_lista(self):
@@ -477,12 +406,13 @@ class ProyectorCantos:
             messagebox.showerror("Error", f"No se pudo cargar la playlist:\n{e}")
             return
 
+        # Guardamos path para sobrescribir
         self.playlist_en_edicion_path = ruta
         self._aplicar_seleccion_en_listbox()
-        self.btn_guardar_cambios.grid()
+        self.btn_guardar_cambios.grid()  # mostrar botón sobrescribir
         self._mostrar_frame(self.frame_seleccion)
 
-    # ---------- Playlists (guardar/cargar) ----------
+    # ---------- Playlists ----------
     def guardar_playlist(self):
         if not self.orden_seleccion:
             messagebox.showwarning("Advertencia", "Selecciona al menos un canto para guardar la playlist.")
@@ -543,16 +473,19 @@ class ProyectorCantos:
             self._aplicar_lista_nombres(lista_nombres)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo leer la playlist:\n{e}")
-        else:
-            self.playlist_en_edicion_path = ruta
-            self._aplicar_seleccion_en_listbox()
-            self.btn_guardar_cambios.grid()
-            self._mostrar_frame(self.frame_seleccion)
+            return
+        # Por diálogo: dejamos al usuario en selección para seguir editando o proyectar
+        self.playlist_en_edicion_path = ruta
+        self._aplicar_seleccion_en_listbox()
+        self.btn_guardar_cambios.grid()
+        self._mostrar_frame(self.frame_seleccion)
 
+    # ---------- Canciones y UI ----------
     def cargar_canciones(self):
         canciones = []
         if not os.path.exists(self.carpeta_canciones):
             os.makedirs(self.carpeta_canciones)
+
         for nombre_carpeta in sorted(os.listdir(self.carpeta_canciones), key=str.lower):
             ruta_carpeta = os.path.join(self.carpeta_canciones, nombre_carpeta)
             if os.path.isdir(ruta_carpeta):
@@ -581,23 +514,23 @@ class ProyectorCantos:
     def actualizar_orden_seleccion(self, event):
         seleccion_actual = [self.canciones_visibles[i] for i in self.lista_canciones.curselection()]
 
+        # Remueve deseleccionados visibles
         for nombre in list(self.orden_seleccion):
             if nombre in self.canciones_visibles and nombre not in seleccion_actual:
                 self.orden_seleccion.remove(nombre)
 
+        # Agrega nuevos al final del orden
         for nombre in seleccion_actual:
             if nombre not in self.orden_seleccion:
                 self.orden_seleccion.append(nombre)
 
-        self._actualizar_sidebar_orden()
-
     def _aplicar_seleccion_en_listbox(self):
+        # Rellena sin filtro para poder marcar todo
         self.lista_canciones.delete(0, tk.END)
         self.canciones_visibles = [c["nombre"] for c in self.canciones]
         for nombre in self.canciones_visibles:
             self.lista_canciones.insert(tk.END, nombre)
         self._aplicar_seleccion_en_listbox_existing_visibles()
-        self._actualizar_sidebar_orden()
 
     def _aplicar_seleccion_en_listbox_existing_visibles(self):
         self.lista_canciones.selection_clear(0, tk.END)
@@ -606,14 +539,7 @@ class ProyectorCantos:
             if nombre in index_por_nombre:
                 self.lista_canciones.selection_set(index_por_nombre[nombre])
 
-    def _actualizar_sidebar_orden(self):
-        if hasattr(self, "lista_orden"):
-            self.lista_orden.delete(0, tk.END)
-            for i, nombre in enumerate(self.orden_seleccion, start=1):
-                self.lista_orden.insert(tk.END, f"{i}. {nombre}")
-        if hasattr(self, "lbl_total"):
-            self.lbl_total.config(text=f"{len(self.orden_seleccion)} seleccionados")
-
+    # ---------- Proyección ----------
     def cargar_setlist(self):
         if not self.orden_seleccion:
             messagebox.showwarning("Advertencia", "Selecciona un canto.")
@@ -623,6 +549,7 @@ class ProyectorCantos:
         self.setlist.sort(key=lambda c: self.orden_seleccion.index(c["nombre"]))
         self.cancion_actual_index = 0
 
+        # Asegurar pantalla completa al proyectar
         self.root.attributes('-fullscreen', True)
 
         self._mostrar_frame(self.frame_letra)
@@ -633,6 +560,7 @@ class ProyectorCantos:
             return
 
         cancion = self.setlist[self.cancion_actual_index]
+
         try:
             with open(cancion["letra"], "r", encoding="utf-8") as f:
                 letra = f.read()
@@ -641,14 +569,10 @@ class ProyectorCantos:
             return
 
         self.label_titulo.config(text=cancion['nombre'])
-
         self.texto_letra.delete("1.0", tk.END)
         self.texto_letra.insert(tk.END, letra)
         self.texto_letra.tag_add("center", "1.0", "end")
         self.texto_letra.yview_moveto(0)
-
-        if hasattr(self, "_cover_small_lbl") and self._cover_small_lbl and self._cover_small_img:
-            self._cover_small_lbl.configure(image=self._cover_small_img)
 
         try:
             if cancion["audio"]:
@@ -679,12 +603,14 @@ class ProyectorCantos:
             pygame.mixer.music.pause()
             self.musica_pausada = True
 
+    # ---------- Utilidades ----------
     def cerrar_aplicacion(self):
         try:
             pygame.mixer.music.stop()
         except Exception:
             pass
         self.root.destroy()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
